@@ -1,4 +1,4 @@
-//! The panel.
+//! O painel.
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -8,20 +8,17 @@ use eframe::egui;
 use crate::config::Settings;
 use crate::fire_button::FireButton;
 use crate::hook;
-use crate::scaling::factor_from_dpi;
 use crate::shared::SHARED;
 use crate::theme;
 
-/// Semantic, not decorative: green means "acting now" regardless of the chosen palette.
+/// Semântico, não decorativo: verde é "agindo agora", qualquer que seja a paleta.
 const LIVE: egui::Color32 = egui::Color32::from_rgb(102, 214, 142);
 const WAITING: egui::Color32 = egui::Color32::from_rgb(214, 176, 102);
+const TROUBLE: egui::Color32 = egui::Color32::from_rgb(226, 118, 118);
 
-/// Window heights for the two shapes of the panel: joined axes shows two DPI fields,
-/// split shows four.
-const HEIGHT_JOINED: f32 = 462.0;
-const HEIGHT_SPLIT: f32 = 538.0;
+const HEIGHT_JOINED: f32 = 500.0;
+const HEIGHT_SPLIT: f32 = 576.0;
 
-/// Colours in use this frame, all derived from the two the user picks.
 struct Palette {
     background: egui::Color32,
     ink: egui::Color32,
@@ -32,9 +29,8 @@ struct Palette {
 }
 
 impl Palette {
-    /// Two choices drive everything: one colour for the buttons and the lettering, one
-    /// for the background. The rest are blends of those two, so the panel stays coherent
-    /// whatever the user picks.
+    /// Duas escolhas comandam tudo: uma cor para os botões e as letras, outra para o
+    /// fundo. O resto são misturas das duas, então o painel não desmonta.
     fn from(settings: &Settings) -> Self {
         Self {
             background: rgb(settings.background),
@@ -46,8 +42,8 @@ impl Palette {
         }
     }
 
-    /// Text printed *on top of* the filled button. It cannot be the accent — that is the
-    /// fill — so it is derived from how bright the accent is.
+    /// Texto **sobre** o botão preenchido. Não pode ser a cor de destaque — ela é o
+    /// preenchimento —, então sai do brilho dela.
     fn on_accent(&self, accent: [u8; 3]) -> egui::Color32 {
         rgb(theme::ink_for(accent))
     }
@@ -64,9 +60,7 @@ fn mix(a: [u8; 3], b: [u8; 3], t: f32) -> egui::Color32 {
 
 pub struct App {
     settings: Settings,
-    /// Last height asked of the window manager, so the request is sent on change only.
     requested_height: f32,
-    /// Last palette pushed into the egui style, for the same reason.
     applied_colours: Option<([u8; 3], [u8; 3])>,
 }
 
@@ -86,23 +80,14 @@ impl App {
         app
     }
 
-    /// Pushes the panel values to the hook and persists them.
+    /// Leva os valores do painel para o motor e grava em disco.
     fn publish(&self) {
-        let (fx, fy) = self.factors();
-        SHARED.set_factors(fx, fy);
+        SHARED.set_dpi(
+            self.settings.base_dpi.clamp(50, 32_000) as u16,
+            self.settings.shooting_dpi_x.clamp(50, 32_000) as u16,
+        );
         SHARED.set_fire_button(self.settings.fire_button);
         self.settings.save();
-    }
-
-    /// With the axes joined, the Y fields do not exist conceptually: X answers for both.
-    fn factors(&self) -> (f32, f32) {
-        let fx = factor_from_dpi(self.settings.base_dpi, self.settings.shooting_dpi_x);
-        let fy = if self.settings.split_axes {
-            factor_from_dpi(self.settings.base_dpi_y, self.settings.shooting_dpi_y)
-        } else {
-            fx
-        };
-        (fx, fy)
     }
 
     fn apply_palette(&mut self, ctx: &egui::Context) {
@@ -113,10 +98,9 @@ impl App {
         self.applied_colours = Some(chosen);
 
         let palette = Palette::from(&self.settings);
-        let light_background = theme::ink_for(self.settings.background) == theme::INK_DARK;
+        let light = theme::ink_for(self.settings.background) == theme::INK_DARK;
         ctx.all_styles_mut(|style| {
-            // Start from the base whose shadows and strokes suit the chosen background.
-            style.visuals = if light_background {
+            style.visuals = if light {
                 egui::Visuals::light()
             } else {
                 egui::Visuals::dark()
@@ -132,8 +116,8 @@ impl App {
             style.visuals.widgets.active.bg_fill = palette.surface_hover;
             style.visuals.selection.bg_fill = palette.accent.gamma_multiply(0.35);
             style.visuals.selection.stroke.color = palette.ink;
-            // `override_text_color` does not reach `strong()` text, which reads the
-            // active widget stroke — a white title over a light background otherwise.
+            // `override_text_color` não alcança o texto `strong()`, que lê o traço do
+            // widget ativo — sem isto o título sai branco sobre fundo claro.
             for widget in [
                 &mut style.visuals.widgets.noninteractive,
                 &mut style.visuals.widgets.inactive,
@@ -155,7 +139,7 @@ impl App {
             ui.label(egui::RichText::new(label).color(muted));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 changed = ui
-                    .add(egui::DragValue::new(value).speed(10).range(1..=32_000))
+                    .add(egui::DragValue::new(value).speed(10).range(50..=32_000))
                     .changed();
             });
         });
@@ -164,32 +148,30 @@ impl App {
 }
 
 impl eframe::App for App {
-    /// eframe's default clears the window with a hardcoded near-black at alpha 180 and
-    /// ignores `panel_fill` entirely — without this the chosen background never shows,
-    /// and the window is faintly translucent.
+    /// O padrão do eframe limpa a janela com um cinza fixo e ignora `panel_fill`.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         rgb(self.settings.background).to_normalized_gamma_f32()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // The global hotkey can flip the state from the hook thread.
         let live = SHARED.enabled.load(Ordering::SeqCst);
         self.settings.enabled = live;
         ui.ctx().request_repaint_after(Duration::from_millis(200));
         self.apply_palette(ui.ctx());
 
-        let wanted_height = if self.settings.split_axes {
+        let per_axis_ok = SHARED.per_axis.load(Ordering::Relaxed);
+        if !per_axis_ok {
+            self.settings.split_axes = false;
+        }
+        let wanted = if self.settings.split_axes {
             HEIGHT_SPLIT
         } else {
             HEIGHT_JOINED
         };
-        if self.requested_height != wanted_height {
-            self.requested_height = wanted_height;
+        if self.requested_height != wanted {
+            self.requested_height = wanted;
             ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                    340.0,
-                    wanted_height,
-                )));
+                .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(340.0, wanted)));
         }
 
         let palette = Palette::from(&self.settings);
@@ -205,15 +187,28 @@ impl eframe::App for App {
                         .strong(),
                 );
                 ui.label(
-                    egui::RichText::new("A mira muda enquanto o gatilho está pressionado")
+                    egui::RichText::new("Troca a DPI do mouse enquanto o gatilho está pressionado")
                         .size(11.5)
                         .color(muted),
                 );
 
                 ui.add_space(14.0);
-                let mut changed = ui
-                    .checkbox(&mut self.settings.split_axes, "Separar eixos X e Y")
-                    .changed();
+                let mut changed = false;
+
+                ui.add_enabled_ui(per_axis_ok, |ui| {
+                    changed |= ui
+                        .checkbox(&mut self.settings.split_axes, "Separar eixos X e Y")
+                        .changed();
+                });
+                if !per_axis_ok {
+                    ui.label(
+                        egui::RichText::new(
+                            "seu mouse não tem DPI por eixo (feature HID++ 0x2202)",
+                        )
+                        .size(10.5)
+                        .color(muted.gamma_multiply(0.85)),
+                    );
+                }
 
                 ui.add_space(2.0);
                 if self.settings.split_axes {
@@ -237,8 +232,6 @@ impl eframe::App for App {
                     changed |= Self::dpi_row(ui, "DPI base", &mut self.settings.base_dpi, muted);
                     changed |=
                         Self::dpi_row(ui, "DPI atirando", &mut self.settings.shooting_dpi_x, muted);
-                    // Joined: the Y fields mirror X, so checking the box starts from parity
-                    // instead of from a stale number the user never sees.
                     self.settings.base_dpi_y = self.settings.base_dpi;
                     self.settings.shooting_dpi_y = self.settings.shooting_dpi_x;
                 }
@@ -290,48 +283,53 @@ impl eframe::App for App {
                 });
 
                 ui.add_space(6.0);
-                let (fx, fy) = self.factors();
-                let factor_text = if self.settings.split_axes {
-                    format!("Fator  X {fx:.2}×   Y {fy:.2}×")
-                } else {
-                    format!("Fator  {fx:.2}×")
-                };
-                ui.label(egui::RichText::new(factor_text).size(11.5).color(muted));
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} para {} ao atirar",
+                        self.settings.base_dpi, self.settings.shooting_dpi_x
+                    ))
+                    .size(11.5)
+                    .color(muted),
+                );
 
-                ui.add_space(14.0);
-                let button_label = if live { "DESATIVAR" } else { "ATIVAR" };
-                let (button_fill, button_text) = if live {
+                ui.add_space(12.0);
+                let mouse_ok = SHARED.mouse_found.load(Ordering::Relaxed);
+                let label = if live { "DESATIVAR" } else { "ATIVAR" };
+                let (fill, text) = if live {
                     (palette.surface_hover, palette.ink)
                 } else {
                     (palette.accent, palette.on_accent(self.settings.accent))
                 };
-                let button = egui::Button::new(
-                    egui::RichText::new(button_label)
-                        .size(14.0)
-                        .strong()
-                        .color(button_text),
-                )
-                .fill(button_fill);
+                let button =
+                    egui::Button::new(egui::RichText::new(label).size(14.0).strong().color(text))
+                        .fill(fill);
 
-                if ui
-                    .add_sized(egui::vec2(ui.available_width(), 40.0), button)
-                    .clicked()
-                {
-                    let want = !live;
-                    SHARED.enabled.store(want, Ordering::SeqCst);
-                    self.settings.enabled = want;
-                    hook::request_enabled(want);
-                    changed = true;
-                }
+                ui.add_enabled_ui(mouse_ok, |ui| {
+                    if ui
+                        .add_sized(egui::vec2(ui.available_width(), 40.0), button)
+                        .clicked()
+                    {
+                        let want = !live;
+                        SHARED.enabled.store(want, Ordering::SeqCst);
+                        self.settings.enabled = want;
+                        hook::request_enabled(want);
+                        changed = true;
+                    }
+                });
 
                 ui.add_space(10.0);
                 let focused = SHARED.target_focused.load(Ordering::Relaxed);
                 let holding = SHARED.holding_fire.load(Ordering::Relaxed);
-                let (dot, status) = match (live, focused, holding) {
-                    (false, _, _) => (muted, "Desligado"),
-                    (true, false, _) => (WAITING, "Aguardando o BlueStacks ganhar foco"),
-                    (true, true, false) => (LIVE, "Pronto — segure o gatilho"),
-                    (true, true, true) => (LIVE, "Aplicando agora"),
+                let (dot, status) = if !mouse_ok {
+                    (TROUBLE, "Nenhum mouse com DPI programável".to_string())
+                } else if !live {
+                    (muted, "Desligado".to_string())
+                } else if !focused {
+                    (WAITING, "Aguardando o BlueStacks ganhar foco".to_string())
+                } else if holding {
+                    (LIVE, "Aplicando agora".to_string())
+                } else {
+                    (LIVE, "Pronto — segure o gatilho".to_string())
                 };
                 ui.horizontal(|ui| {
                     let (rect, _) =
@@ -340,11 +338,20 @@ impl eframe::App for App {
                     ui.label(egui::RichText::new(status).size(11.5).color(muted));
                 });
 
-                ui.add_space(4.0);
+                let message = SHARED.last_message();
+                if !message.is_empty() {
+                    ui.label(
+                        egui::RichText::new(message)
+                            .size(10.5)
+                            .color(muted.gamma_multiply(0.85)),
+                    );
+                }
+
+                ui.add_space(2.0);
                 ui.label(
                     egui::RichText::new("Ctrl + Alt + S  liga e desliga sem sair do jogo")
                         .size(11.0)
-                        .color(muted.gamma_multiply(0.85)),
+                        .color(muted.gamma_multiply(0.8)),
                 );
 
                 if changed {

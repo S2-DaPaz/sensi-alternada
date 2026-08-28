@@ -1,65 +1,52 @@
-//! State the panel writes and the hook reads. The hook runs on every mouse event, so
-//! everything here is lock-free.
+//! Estado que o painel escreve e a thread do hook lê.
 
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32, Ordering};
 
 use crate::fire_button::FireButton;
-
-/// Factors are carried as parts-per-million so they fit an atomic.
-const PPM: f32 = 1_000_000.0;
 
 pub struct Shared {
     pub enabled: AtomicBool,
     pub target_focused: AtomicBool,
     pub holding_fire: AtomicBool,
-    factor_x_ppm: AtomicU32,
-    factor_y_ppm: AtomicU32,
+    /// Um mouse que fala HID++ e troca DPI foi encontrado.
+    pub mouse_found: AtomicBool,
+    /// O mouse tem a feature 0x2202 e aceita DPI diferente em X e Y.
+    pub per_axis: AtomicBool,
+    dpi_base: AtomicU16,
+    dpi_shooting: AtomicU16,
     fire_button: AtomicU8,
-    /// Thread id of the message loop that owns the hook, published once it starts.
+    /// Thread do laço de mensagens que fala com o mouse, publicada quando ela sobe.
     pub hook_thread: AtomicU32,
-    /// Contadores de diagnostico, dumpados quando SENSI_DEBUG=1.
-    pub raw_seen: AtomicU32,
-    pub raw_abs: AtomicU32,
-    pub injected: AtomicU32,
-    pub suppressed: AtomicU32,
-    pub hook_installed: AtomicBool,
-    pub sink_ok: AtomicBool,
-    pub raw_registered: AtomicBool,
-    /// HWND da janela so-de-mensagem, para reinscricao.
-    pub sink_hwnd: std::sync::atomic::AtomicUsize,
-    pub reregistros: AtomicU32,
+    /// Última mensagem do motor, para o painel dizer o que houve em vez de ficar mudo.
+    status: Mutex<String>,
 }
 
 pub static SHARED: Shared = Shared {
     enabled: AtomicBool::new(false),
     target_focused: AtomicBool::new(false),
     holding_fire: AtomicBool::new(false),
-    factor_x_ppm: AtomicU32::new(1_000_000),
-    factor_y_ppm: AtomicU32::new(1_000_000),
+    mouse_found: AtomicBool::new(false),
+    per_axis: AtomicBool::new(false),
+    dpi_base: AtomicU16::new(800),
+    dpi_shooting: AtomicU16::new(400),
     fire_button: AtomicU8::new(0),
     hook_thread: AtomicU32::new(0),
-    raw_seen: AtomicU32::new(0),
-    raw_abs: AtomicU32::new(0),
-    injected: AtomicU32::new(0),
-    suppressed: AtomicU32::new(0),
-    hook_installed: AtomicBool::new(false),
-    sink_ok: AtomicBool::new(false),
-    raw_registered: AtomicBool::new(false),
-    sink_hwnd: std::sync::atomic::AtomicUsize::new(0),
-    reregistros: AtomicU32::new(0),
+    status: Mutex::new(String::new()),
 };
 
 impl Shared {
-    pub fn set_factors(&self, x: f32, y: f32) {
-        self.factor_x_ppm.store((x * PPM) as u32, Ordering::Relaxed);
-        self.factor_y_ppm.store((y * PPM) as u32, Ordering::Relaxed);
+    pub fn set_dpi(&self, base: u16, shooting: u16) {
+        self.dpi_base.store(base, Ordering::Relaxed);
+        self.dpi_shooting.store(shooting, Ordering::Relaxed);
     }
 
-    pub fn factors(&self) -> (f32, f32) {
-        (
-            self.factor_x_ppm.load(Ordering::Relaxed) as f32 / PPM,
-            self.factor_y_ppm.load(Ordering::Relaxed) as f32 / PPM,
-        )
+    pub fn dpi_base(&self) -> u16 {
+        self.dpi_base.load(Ordering::Relaxed)
+    }
+
+    pub fn dpi_shooting(&self) -> u16 {
+        self.dpi_shooting.load(Ordering::Relaxed)
     }
 
     pub fn set_fire_button(&self, button: FireButton) {
@@ -73,5 +60,15 @@ impl Shared {
     pub fn fire_button(&self) -> FireButton {
         let index = self.fire_button.load(Ordering::Relaxed) as usize;
         FireButton::ALL[index.min(FireButton::ALL.len() - 1)]
+    }
+
+    pub fn report(&self, message: impl Into<String>) {
+        if let Ok(mut slot) = self.status.lock() {
+            *slot = message.into();
+        }
+    }
+
+    pub fn last_message(&self) -> String {
+        self.status.lock().map(|s| s.clone()).unwrap_or_default()
     }
 }

@@ -1,72 +1,55 @@
 # sensi-alternada
 
-Painel Win32 que escala o movimento do mouse enquanto o botão de tiro está pressionado,
-para jogar no BlueStacks com qualquer mouse. Rust + `eframe`/`egui`, um `.exe`.
+Painel que troca a **DPI do mouse** enquanto o gatilho está pressionado, falando HID++ com
+o dispositivo. Rust + `eframe`/`egui`, um `.exe`, sem driver.
 
 ## Fronteira do escopo — não negociável
 
-Compensação de recuo e autofire ficam **fora**. Ajustar sensibilidade não automatiza ação
-de jogo e keymapping em emulador oficial é permitido pela Garena; recuo automático e
-disparo em laço são macro, observáveis dentro do jogo, e são banimento. Não acrescentar
-`MoveMouseRelative` de recuo nem `PressMouseButton` em laço.
+Compensação de recuo e autofire ficam **fora**. Trocar DPI não automatiza ação de jogo e
+keymapping em emulador oficial é permitido pela Garena; recuo automático e disparo em laço
+são macro, observáveis dentro do jogo, e são banimento.
 
 ## Onde mexer
 
 | Quero mudar | Arquivo |
 |---|---|
-| como o fator é calculado, ou o acumulador de resto | `src/scaling.rs` — **tem testes** |
+| enquadramento das mensagens HID++ | `src/hidpp.rs` — **tem testes** |
+| abrir o mouse, ler e escrever | `src/mouse.rs` |
 | qual botão dispara, e como o evento é lido | `src/fire_button.rs` — **tem testes** |
 | o que é salvo e onde | `src/config.rs` — **tem testes** |
-| supressão e reinjeção | `src/hook.rs` |
 | contraste de texto sobre uma cor | `src/theme.rs` — **tem testes** |
-| qual executável conta como "em foco" | `src/foreground.rs` (`TARGET_EXE`) |
-| o painel, e como as cores viram estilo | `src/app.rs` |
+| quando a troca vale | `src/hook.rs`, `src/foreground.rs` (`DEFAULT_TARGET_EXE`) |
+| o painel | `src/app.rs` |
 
-`scaling.rs`, `fire_button.rs`, `config.rs` e `theme.rs` são lógica pura e rodam sem
-Windows. **Mudança neles entra por teste primeiro** — os três bugs mais caros até agora
-apareceram assim: `inf` que arremessa o cursor, fator `0,0` que congela a mira, e cor
-`[0,0,0]` que apagaria o painel de quem já tinha configuração salva.
+`hidpp.rs`, `fire_button.rs`, `config.rs` e `theme.rs` são lógica pura e rodam sem hardware.
+**Mudança neles entra por teste primeiro.**
 
-## Três armadilhas do eframe/egui já pagas
+## O que já custou caro aqui
 
-- **`clear_color` ignora `panel_fill`.** O default do eframe é um cinza fixo com alpha 180.
-  Sem sobrescrever, a cor de fundo escolhida nunca aparece e a janela fica translúcida.
-- **`override_text_color` não alcança `strong()`.** Texto forte lê o traço do widget
-  ativo; sem ajustar `widgets.*.fg_stroke`, o título sai branco sobre fundo claro.
-- **Campo novo em `Settings` precisa de `#[serde(default = "...")]` nomeado.** O
-  `#[serde(default)]` simples devolve zero, e zero numa cor é **preto no preto**.
+- **Escalar o cursor não funciona.** Foi o desenho original, ficou com precisão exata, e o
+  jogo ignorava. O BlueStacks lê contagem crua do dispositivo. Não voltar para lá.
+- **Casar resposta HID++ só pelo `swId` defasa a conversa em um pedido, para sempre.** O
+  `swId` é constante, então toda resposta casa com qualquer pedido. `request()` drena o
+  buffer antes de escrever e casa por **feature + byte de função inteiro**.
+- **A coleção HID++ curta (`0xFF00/0x01`) aceita a escrita e nunca responde.** Só a longa
+  (`0xFF00/0x02`, report `0x11`) fala. Falha silenciosa: não há erro, só ausência.
+- **A troca de DPI não roda dentro do callback do hook.** São ~4 ms; ali dentro atrasaria
+  cada clique. Ela é postada para o laço de mensagens.
+- **`clear_color` do eframe ignora `panel_fill`**, e **`override_text_color` não alcança
+  `strong()`**. As duas cores precisam ser forçadas à mão.
+- **Campo novo em `Settings` precisa de `#[serde(default = "...")]` nomeado.** O default
+  simples devolve zero, e zero numa cor é preto no preto.
 
-## Quatro coisas que parecem detalhe e não são
+## Como diagnosticar
 
-- **O delta vem do raw input, nunca do hook.** `MSLLHOOKSTRUCT::pt` é posição de cursor:
-  chega acelerada e disputada pelas reinjeções. Medido — 400 px injetados viraram 700, 100
-  e **−150** em três rodadas. O hook só suprime.
-- **A inscrição no raw input é por processo**, e o winit sob o eframe rouba a nossa durante
-  o arranque, sem erro nenhum. Por isso `reregister_raw_input()` roda a cada 200 ms e no
-  início de cada rajada. Se `WM_INPUT` parar de chegar, é aqui.
-- A injeção é **absoluta**, escalada por `tamanho − 1`. Relativa faz o Windows aplicar a
-  velocidade de ponteiro por cima do fator; dividir por `tamanho` encolhe cada injeção e a
-  perda vira deriva.
-- A marca em `dwExtraInfo` (`TAG`) impede o hook de reprocessar a própria injeção, e o
-  filtro `MOUSE_MOVE_ABSOLUTE` faz o mesmo do lado do raw input.
+`SENSI_DEBUG=1` escreve o estado em `%TEMP%\sensi-debug.txt`: alvo, foco, mouse encontrado,
+suporte a eixo, gatilho, DPIs e a última mensagem do motor. `SENSI_TARGET_EXE=*` desliga o
+portão de foco, que é como se mede sem depender de quem está em primeiro plano.
 
-## Como medir de novo
-
-`SENSI_DEBUG=1` escreve contadores em `%TEMP%\sensi-debug.txt`. O par que diagnostica é
-**suprimidos** contra **raw_seen**: suprimir sem receber significa que a inscrição foi
-roubada, e o ponteiro simplesmente para. Contador de diagnóstico vai **antes** da guarda de
-filtragem — depois dela, "não chega" e "chega e é descartado" ficam indistinguíveis.
-
-## Se o comportamento em jogo estiver errado
-
-**Mira dobrada ou trêmula** tem uma causa só: o BlueStacks estaria lendo raw input, não o
-cursor. Suprimir no hook não cega o raw input — medido, ver
-`docs/2026-08-27-sensibilidade-alternada-design.md`. Não há conserto em user-mode.
+A verdade sobre a DPI é **lida do mouse**, não do que o app diz ter feito.
 
 ## QA
 
-`cargo test` (14 testes) e `cargo fmt`. O painel se verifica rodando e capturando a
-janela; capturar com `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` e o retângulo de
-`DwmGetWindowAttribute(9)`. `CopyFromScreen` fotografa o que está por cima e
-`GetWindowRect` inclui a borda invisível do Win10 — os dois já produziram captura errada
-aqui.
+`cargo test` (12 testes) e `cargo fmt`. O painel se verifica rodando e capturando a janela
+com `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` e o retângulo de
+`DwmGetWindowAttribute(9)` — `CopyFromScreen` fotografa o que está por cima.

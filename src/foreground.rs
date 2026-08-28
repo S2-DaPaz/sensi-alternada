@@ -39,22 +39,18 @@ pub fn spawn_watcher() {
                     .map(|name| name.eq_ignore_ascii_case(&target))
                     .unwrap_or(false);
             SHARED.target_focused.store(focused, Ordering::Relaxed);
-            crate::hook::reregister_raw_input();
             if std::env::var("SENSI_DEBUG").is_ok() {
                 let linha = format!(
-                    "alvo={target:?} vendo={visto:?} foco={} ligado={} hook={} janela={} rawreg={} rereg={} segurando={} raw_seen={} raw_abs={} injetados={} suprimidos={}
+                    "alvo={target:?} vendo={visto:?} foco={} ligado={} mouse={} porEixo={} segurando={} dpi={}->{} · {}
 ",
                     focused,
                     SHARED.enabled.load(Ordering::Relaxed),
-                    SHARED.hook_installed.load(Ordering::Relaxed),
-                    SHARED.sink_ok.load(Ordering::Relaxed),
-                    SHARED.raw_registered.load(Ordering::Relaxed),
-                    SHARED.reregistros.load(Ordering::Relaxed),
+                    SHARED.mouse_found.load(Ordering::Relaxed),
+                    SHARED.per_axis.load(Ordering::Relaxed),
                     SHARED.holding_fire.load(Ordering::Relaxed),
-                    SHARED.raw_seen.load(Ordering::Relaxed),
-                    SHARED.raw_abs.load(Ordering::Relaxed),
-                    SHARED.injected.load(Ordering::Relaxed),
-                    SHARED.suppressed.load(Ordering::Relaxed),
+                    SHARED.dpi_base(),
+                    SHARED.dpi_shooting(),
+                    SHARED.last_message(),
                 );
                 let _ = std::fs::write(std::env::temp_dir().join("sensi-debug.txt"), linha);
             }
