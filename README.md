@@ -1,8 +1,28 @@
 # Sensibilidade alternada
 
-Muda a sensibilidade do mouse **enquanto o botão de tiro está pressionado**, no
-BlueStacks. Funciona com qualquer mouse, de qualquer marca — não depende de DPI de
-firmware nem do software do fabricante.
+Muda a sensibilidade do mouse **enquanto o botão de tiro está pressionado**, escalando o
+movimento do ponteiro do Windows. Funciona com qualquer mouse, de qualquer marca.
+
+> ## ⚠ Não funciona dentro do BlueStacks — leia antes de baixar
+>
+> Medido em 28/08/2026 no aparelho para o qual isto foi escrito: **o modo de tiro do
+> BlueStacks não lê o cursor do Windows**, lê as contagens cruas do dispositivo. O painel
+> escala o ponteiro com precisão exata — verificado, erro de 0 px — e o jogo simplesmente
+> não percebe.
+>
+> A prova é direta: **trocar a DPI pelo software do mouse muda a sensibilidade no jogo;
+> escalar o cursor por software não muda nada.** Nenhum ajuste no painel resolve isso —
+> é uma limitação da camada, não um defeito de implementação.
+>
+> **O que resolve, hoje e de graça:** se o seu mouse for Logitech G, o script em
+> [`docs/logitech-g-hub/`](docs/logitech-g-hub/sensibilidade-alternada.lua) troca a DPI no
+> firmware enquanto o gatilho está pressionado. Sem instalar nada, sem driver. Razer,
+> Corsair e outros têm o equivalente no software da marca.
+>
+> **Para valer em qualquer marca** seria preciso um driver de filtro de kernel, como o
+> RawAccel faz. Não está implementado aqui.
+>
+> O painel continua válido para qualquer aplicação que leia o **cursor** do Windows.
 
 ![painel](docs/painel.png)
 

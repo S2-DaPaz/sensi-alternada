@@ -20,10 +20,24 @@ não serve de motor: a FAQ oficial diz que ele tem *"a one-second delay on write
 cannot be used to cheat"*. Um segundo por escrita; segurar o gatilho precisa de
 milissegundos.
 
-## Premissa herdada
+## Premissa herdada — REFUTADA em 28/08/2026
 
 **O dono pesquisou que o modo de tiro do BlueStacks lê o mouse pelo cursor do Windows.**
-Isto é pesquisa dele, não medição deste projeto — e o desenho inteiro depende disso.
+Isto era pesquisa dele, não medição deste projeto — e o desenho inteiro dependia disso.
+
+> **A premissa era falsa.** Com o painel escalando o ponteiro corretamente (erro de 0 px,
+> medido), a sensibilidade dentro do jogo **não mudou**. E trocar a DPI pelo software do
+> mouse **mudou**. Os dois fatos juntos só têm uma leitura: o BlueStacks lê as contagens
+> cruas do dispositivo, não o cursor.
+>
+> Minha previsão de sintoma também estava errada: eu disse "mira dobrada", supondo que o
+> jogo somaria o movimento físico à minha injeção. Ele não soma — descarta a injeção, que
+> vai marcada como `MOUSE_MOVE_ABSOLUTE`, exatamente o filtro que o RawAccel aplica e que
+> eu mesmo aplico. Sobra o movimento físico intacto, e o sintoma é **nenhuma diferença**.
+>
+> Consequência: **nenhuma versão deste painel pode afetar o BlueStacks.** Só muda a coisa
+> quem altera as contagens antes do raw input — o firmware do mouse, ou um driver de
+> filtro de kernel.
 
 `HD-Player.exe` importa os dois caminhos (`RegisterRawInputDevices` + `GetRawInputData`
 e `ClipCursor`/`SetCursorPos`/`GetCursorPos`), então leitura estática não decide.
