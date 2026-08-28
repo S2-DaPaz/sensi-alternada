@@ -1,0 +1,77 @@
+# Sensibilidade alternada
+
+Muda a sensibilidade do mouse **enquanto o botão de tiro está pressionado**, no
+BlueStacks. Funciona com qualquer mouse, de qualquer marca — não depende de DPI de
+firmware nem do software do fabricante.
+
+![painel](docs/painel.png)
+
+## Como usar
+
+1. `cargo build --release` e rode `target/release/sensi-alternada.exe`.
+2. **DPI base** — a DPI que o seu mouse está usando hoje.
+3. **DPI atirando** — a DPI que você quer enquanto segura o gatilho. Menor = mais
+   precisão.
+4. **Separar eixos X e Y** — marque para dar valores diferentes na horizontal e na
+   vertical. Vale para os dois campos: a base e a de tiro ganham X e Y próprios, então
+   cada eixo tem o seu fator.
+5. **Botão de tiro** — esquerdo, direito, meio, lateral 1 ou lateral 2.
+6. **Cores** — dois seletores: um para os botões e as letras, outro para o fundo.
+   Qualquer cor. O botão **Padrão** volta às originais.
+7. **ATIVAR**, ou `Ctrl + Alt + S` a qualquer momento, inclusive com o jogo em tela
+   cheia.
+
+A janela acompanha o estado: com os eixos juntos ela encolhe, com eles separados cresce
+para caber os quatro campos.
+
+O ajuste só vale com o **BlueStacks em foco**. No resto do Windows o mouse continua
+exatamente como sempre foi, mesmo com o script ativo.
+
+Desativar remove o hook do sistema por completo — não fica nada instalado nem residente.
+As configurações ficam em `%APPDATA%\sensi-alternada\settings.json`.
+
+## Como funciona
+
+O painel não troca a DPI do mouse: isso é proprietário de cada fabricante e não daria
+para fazer com qualquer marca. Ele intercepta o movimento com um hook
+`WH_MOUSE_LL`, **engole** o evento físico e reinjeta a versão multiplicada pelo fator
+`DPI atirando ÷ DPI base`.
+
+Dois detalhes carregam o peso:
+
+- A reinjeção é **absoluta**, o que ignora a velocidade de ponteiro e a "melhor precisão
+  do ponteiro" do Windows. Se fosse relativa, o sistema aplicaria o fator uma segunda vez
+  e o número do painel deixaria de significar o que diz.
+- O resto fracionário é **acumulado entre eventos**. Multiplicar `+1` por 0,5 e truncar
+  daria uma sequência de zeros: a mira travaria justamente no movimento lento, que é onde
+  a precisão importa. Provado quebrando o acumulador de propósito — dez movimentos de
+  `+1` somaram **0** em vez de 5.
+
+A cor do texto **dentro** do botão não é a que você escolhe: ela é derivada do brilho da
+cor escolhida, com os pesos do sRGB. Sem isso um botão amarelo receberia letra branca e
+ninguém leria o que está escrito.
+
+## Se a mira ficar dobrada ou trêmula
+
+Esse sintoma tem uma causa só: o BlueStacks estaria lendo o mouse por **raw input** em
+vez do cursor do Windows. Suprimir um evento no hook não cega o raw input — medido em
+26/08/2026: 300 movimentos engolidos, o cursor andou 0 px e o raw input entregou os 300
+assim mesmo. Nesse caso o movimento físico chega **somado** ao nosso.
+
+Não há conserto em user-mode; a saída é um driver de interceptação. Ver
+`docs/2026-08-27-sensibilidade-alternada-design.md`.
+
+## O que este projeto não faz, por decisão
+
+Compensação de recuo e autofire. Ajustar sensibilidade não automatiza ação nenhuma, e
+keymapping em emulador oficial com cliente não modificado é permitido pela Garena. Recuo
+automático e disparo em laço são macro, são observáveis dentro do jogo, e são banimento.
+
+## Testes
+
+```
+cargo test
+```
+
+A lógica pura — fator, acumulador de resto, leitura do botão, configuração — é testada
+sem depender do Windows. O hook, o foco e o painel são verificados rodando.
