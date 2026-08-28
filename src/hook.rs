@@ -19,14 +19,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
     UnhookWindowsHookEx, WH_MOUSE_LL, WM_APP, WM_HOTKEY,
 };
 
-use crate::engine::Engine;
+use crate::engine::{Engine, Level};
 use crate::fire_button::Transition;
 use crate::shared::SHARED;
 
 /// Instalar ou remover o hook. `wparam` carrega 1 ou 0.
 const WM_APP_SET_ENABLED: u32 = WM_APP + 1;
-/// Trocar a DPI. `wparam` carrega o valor.
-const WM_APP_SET_DPI: u32 = WM_APP + 2;
+/// Aplicar um nível. `wparam` carrega 0 para base e 1 para atirando.
+const WM_APP_APPLY: u32 = WM_APP + 2;
 /// Refazer o motor porque a marca mudou no painel.
 const WM_APP_SET_BRAND: u32 = WM_APP + 3;
 
@@ -49,10 +49,17 @@ pub fn spawn() {
 
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
             match msg.message {
-                WM_APP_SET_DPI => {
-                    let dpi = msg.wParam.0 as u16;
-                    match engine.set_dpi(dpi) {
-                        Ok(()) => SHARED.report(format!("DPI {dpi}")),
+                WM_APP_APPLY => {
+                    let level = if msg.wParam.0 == 0 {
+                        Level::Base
+                    } else {
+                        Level::Atirando
+                    };
+                    match engine.apply(level) {
+                        Ok(()) => SHARED.report(match level {
+                            Level::Base => format!("base ({} DPI)", SHARED.dpi_base()),
+                            Level::Atirando => format!("atirando ({} DPI)", SHARED.dpi_shooting()),
+                        }),
                         Err(e) => SHARED.report(e),
                     }
                 }
@@ -109,6 +116,9 @@ fn publish_engine(engine: &Engine) {
         .engine_usable
         .store(engine.usable(), Ordering::SeqCst);
     SHARED.per_axis.store(engine.per_axis(), Ordering::SeqCst);
+    SHARED
+        .dpi_editable
+        .store(engine.dpi_editable(), Ordering::SeqCst);
     SHARED.report(engine.describe());
 }
 
@@ -118,15 +128,15 @@ pub fn request_brand_change() {
 
 /// Desligar com o gatilho pressionado não pode deixar a DPI de tiro valendo no desktop.
 fn restore_base() {
-    request_dpi(SHARED.dpi_base());
+    apply_level(Level::Base);
 }
 
 pub fn request_enabled(enabled: bool) {
     post(WM_APP_SET_ENABLED, enabled as usize);
 }
 
-fn request_dpi(dpi: u16) {
-    post(WM_APP_SET_DPI, dpi as usize);
+fn apply_level(level: Level) {
+    post(WM_APP_APPLY, if level == Level::Base { 0 } else { 1 });
 }
 
 fn post(message: u32, wparam: usize) {
@@ -164,10 +174,10 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             SHARED.holding_fire.store(pressed, Ordering::Relaxed);
             if SHARED.target_focused.load(Ordering::Relaxed) {
                 // Postado, não executado aqui: a escrita HID leva ~4 ms e atrasaria o clique.
-                request_dpi(if pressed {
-                    SHARED.dpi_shooting()
+                apply_level(if pressed {
+                    Level::Atirando
                 } else {
-                    SHARED.dpi_base()
+                    Level::Base
                 });
             }
         }

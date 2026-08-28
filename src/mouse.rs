@@ -6,19 +6,10 @@
 
 use std::time::{Duration, Instant};
 
-use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, SP_DEVICE_INTERFACE_DATA,
-    SP_DEVICE_INTERFACE_DETAIL_DATA_W, SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW,
-    SetupDiGetDeviceInterfaceDetailW,
-};
-use windows::Win32::Devices::HumanInterfaceDevice::{
-    HIDP_CAPS, HidD_FreePreparsedData, HidD_GetHidGuid, HidD_GetPreparsedData, HidP_GetCaps,
-    PHIDP_PREPARSED_DATA,
-};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_OVERLAPPED, FILE_FLAGS_AND_ATTRIBUTES, FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile,
+    CreateFileW, FILE_FLAG_OVERLAPPED, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile,
 };
 use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
@@ -38,10 +29,6 @@ const FEATURE_EXTENDED_DPI: u16 = 0x2202;
 const ERROR_IO_PENDING: u32 = 997;
 /// Dispositivo ligado direto, sem receptor.
 const DIRECT_DEVICE: u8 = 0xFF;
-
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
 
 pub struct Mouse {
     handle: HANDLE,
@@ -86,7 +73,7 @@ impl Mouse {
         let (input_len, output_len) = capabilities(path)?;
         unsafe {
             let handle = CreateFileW(
-                PCWSTR(wide(path).as_ptr()),
+                PCWSTR(crate::hid::wide(path).as_ptr()),
                 (FILE_GENERIC_READ | FILE_GENERIC_WRITE).0,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                 None,
@@ -201,89 +188,23 @@ impl Mouse {
 
 /// Caminhos das coleções HID++ longas dos dispositivos Logitech presentes.
 fn vendor_collections() -> Vec<String> {
-    let mut paths = Vec::new();
-    unsafe {
-        let guid = HidD_GetHidGuid();
-        let Ok(set) = SetupDiGetClassDevsW(
-            Some(&guid),
-            PCWSTR::null(),
-            None,
-            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
-        ) else {
-            return paths;
-        };
-
-        let mut index = 0u32;
-        loop {
-            let mut data = SP_DEVICE_INTERFACE_DATA {
-                cbSize: std::mem::size_of::<SP_DEVICE_INTERFACE_DATA>() as u32,
-                ..Default::default()
-            };
-            if SetupDiEnumDeviceInterfaces(set, None, &guid, index, &mut data).is_err() {
-                break;
-            }
-            index += 1;
-
-            let mut needed = 0u32;
-            let _ = SetupDiGetDeviceInterfaceDetailW(set, &data, None, 0, Some(&mut needed), None);
-            if needed == 0 {
-                continue;
-            }
-            let mut buffer = vec![0u8; needed as usize];
-            let detail = buffer.as_mut_ptr() as *mut SP_DEVICE_INTERFACE_DETAIL_DATA_W;
-            (*detail).cbSize = std::mem::size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>() as u32;
-            if SetupDiGetDeviceInterfaceDetailW(
-                set,
-                &data,
-                Some(detail),
-                needed,
-                Some(&mut needed),
-                None,
-            )
-            .is_err()
-            {
-                continue;
-            }
-            let ptr = std::ptr::addr_of!((*detail).DevicePath) as *const u16;
-            let mut len = 0usize;
-            while *ptr.add(len) != 0 {
-                len += 1;
-            }
-            let path = String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len));
-            if path.to_lowercase().contains(VID_LOGITECH) && capabilities(&path).is_some() {
-                paths.push(path);
-            }
-        }
-    }
-    paths
+    crate::hid::collections()
+        .into_iter()
+        .filter(|c| {
+            c.path.to_lowercase().contains(VID_LOGITECH)
+                && c.usage_page == VENDOR_USAGE_PAGE
+                && c.usage == LONG_COLLECTION_USAGE
+        })
+        .map(|c| c.path)
+        .collect()
 }
 
 /// Tamanhos dos relatórios, se o caminho for a coleção HID++ longa.
 fn capabilities(path: &str) -> Option<(u16, u16)> {
-    unsafe {
-        let handle = CreateFileW(
-            PCWSTR(wide(path).as_ptr()),
-            0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAGS_AND_ATTRIBUTES(0),
-            None,
-        )
-        .ok()?;
-        let mut pre: PHIDP_PREPARSED_DATA = Default::default();
-        let mut result = None;
-        if HidD_GetPreparsedData(handle, &mut pre) {
-            let mut caps = HIDP_CAPS::default();
-            if HidP_GetCaps(pre, &mut caps).is_ok()
-                && caps.UsagePage == VENDOR_USAGE_PAGE
-                && caps.Usage == LONG_COLLECTION_USAGE
-            {
-                result = Some((caps.InputReportByteLength, caps.OutputReportByteLength));
-            }
-            let _ = HidD_FreePreparsedData(pre);
-        }
-        let _ = CloseHandle(handle);
-        result
-    }
+    crate::hid::collections()
+        .into_iter()
+        .find(|c| {
+            c.path == path && c.usage_page == VENDOR_USAGE_PAGE && c.usage == LONG_COLLECTION_USAGE
+        })
+        .map(|c| (c.input_len, c.output_len))
 }

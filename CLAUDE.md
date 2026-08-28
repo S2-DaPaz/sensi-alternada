@@ -15,7 +15,10 @@ são macro, observáveis dentro do jogo, e são banimento.
 |---|---|
 | a lista de marcas e seus rótulos | `src/brand.rs` — **tem testes** |
 | qual motor atende qual marca | `src/engine.rs` |
+| achar a coleção HID de um dispositivo | `src/hid.rs` |
 | enquadramento das mensagens HID++ | `src/hidpp.rs` — **tem testes** |
+| enquadramento do protocolo SINOWEALTH | `src/sinowealth.rs` — **tem testes** |
+| conversa com mouse SINOWEALTH | `src/sinowealth_mouse.rs` — ⚠ sem hardware |
 | abrir o mouse, ler e escrever | `src/mouse.rs` |
 | qual botão dispara, e como o evento é lido | `src/fire_button.rs` — **tem testes** |
 | o que é salvo e onde | `src/config.rs` — **tem testes** |
@@ -23,13 +26,21 @@ são macro, observáveis dentro do jogo, e são banimento.
 | quando a troca vale | `src/hook.rs`, `src/foreground.rs` (`DEFAULT_TARGET_EXE`) |
 | o painel | `src/app.rs` |
 
-`hidpp.rs`, `brand.rs`, `fire_button.rs`, `config.rs` e `theme.rs` são lógica pura e rodam
-sem hardware. **Mudança neles entra por teste primeiro.**
+`hidpp.rs`, `sinowealth.rs`, `brand.rs`, `fire_button.rs`, `config.rs` e `theme.rs` são
+lógica pura e rodam sem hardware. **Mudança neles entra por teste primeiro.**
 
 ## Acrescentar uma marca
 
-Variante em `brand.rs` (com `label()` e `method()`), módulo com o protocolo no formato de
-`mouse.rs`, e um braço em `Engine::for_brand`. O painel e a persistência já acompanham.
+Variante em `brand.rs`, módulo de protocolo puro (testável), módulo de dispositivo usando
+`hid.rs`, e um braço em `Engine::for_brand`.
+
+**Procure sempre o comando de seleção — perfil, slot, índice — nunca o de escrita de
+configuração.** No SINOWEALTH, mudar o slot de DPI ativo escreveria 520 bytes na memória
+persistente do mouse; a cada tiro isso gastaria os ciclos de gravação do dispositivo. O
+motor recusa quando só há um perfil, e essa recusa é deliberada.
+
+O motor recebe **nível** (`Level::Base` ou `Level::Atirando`), não DPI crua: nem toda marca
+define DPI arbitrária. Quem sabe o que "atirando" significa é o motor.
 
 ## O que já custou caro aqui
 
@@ -63,6 +74,6 @@ A verdade sobre a DPI é **lida do mouse**, não do que o app diz ter feito.
 
 ## QA
 
-`cargo test` (15 testes) e `cargo fmt`. O painel se verifica rodando e capturando a janela
+`cargo test` (20 testes) e `cargo fmt`. O painel se verifica rodando e capturando a janela
 com `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` e o retângulo de
 `DwmGetWindowAttribute(9)` — `CopyFromScreen` fotografa o que está por cima.

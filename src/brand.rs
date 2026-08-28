@@ -6,6 +6,9 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Brand {
     Logitech,
+    /// Chipset SINOWEALTH (VID 258a) — o de boa parte dos mouses de jogo baratos e sem
+    /// marca. E o fabricante do chip, nao do mouse.
+    Sinowealth,
     SemMarca,
 }
 
@@ -16,11 +19,12 @@ impl Default for Brand {
 }
 
 impl Brand {
-    pub const ALL: [Brand; 2] = [Brand::Logitech, Brand::SemMarca];
+    pub const ALL: [Brand; 3] = [Brand::Logitech, Brand::Sinowealth, Brand::SemMarca];
 
     pub fn label(self) -> &'static str {
         match self {
             Brand::Logitech => "Logitech",
+            Brand::Sinowealth => "Genérico (SINOWEALTH)",
             Brand::SemMarca => "Sem marca",
         }
     }
@@ -29,6 +33,7 @@ impl Brand {
     pub fn method(self) -> &'static str {
         match self {
             Brand::Logitech => "HID++ direto no mouse",
+            Brand::Sinowealth => "troca de perfil no mouse",
             Brand::SemMarca => "driver RawAccel",
         }
     }
@@ -52,7 +57,7 @@ mod tests {
     #[test]
     fn all_lists_every_variant() {
         // Se uma variante nova nao entrar em ALL, ela nunca aparece no seletor.
-        for brand in [Brand::Logitech, Brand::SemMarca] {
+        for brand in [Brand::Logitech, Brand::Sinowealth, Brand::SemMarca] {
             assert!(Brand::ALL.contains(&brand), "{brand:?} fora de ALL");
         }
     }

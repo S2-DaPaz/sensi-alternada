@@ -14,6 +14,8 @@ pub struct Shared {
     pub engine_usable: AtomicBool,
     /// O mouse tem a feature 0x2202 e aceita DPI diferente em X e Y.
     pub per_axis: AtomicBool,
+    /// Falso quando as DPIs vêm do dispositivo e o painel não pode escolhê-las.
+    pub dpi_editable: AtomicBool,
     dpi_base: AtomicU16,
     dpi_shooting: AtomicU16,
     fire_button: AtomicU8,
@@ -30,6 +32,7 @@ pub static SHARED: Shared = Shared {
     holding_fire: AtomicBool::new(false),
     engine_usable: AtomicBool::new(false),
     per_axis: AtomicBool::new(false),
+    dpi_editable: AtomicBool::new(true),
     dpi_base: AtomicU16::new(800),
     dpi_shooting: AtomicU16::new(400),
     fire_button: AtomicU8::new(0),

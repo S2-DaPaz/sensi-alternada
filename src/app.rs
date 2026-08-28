@@ -140,13 +140,16 @@ impl App {
     }
 
     fn dpi_row(ui: &mut egui::Ui, label: &str, value: &mut u32, muted: egui::Color32) -> bool {
+        let editable = SHARED.dpi_editable.load(Ordering::Relaxed);
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(label).color(muted));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                changed = ui
-                    .add(egui::DragValue::new(value).speed(10).range(50..=32_000))
-                    .changed();
+                ui.add_enabled_ui(editable, |ui| {
+                    changed = ui
+                        .add(egui::DragValue::new(value).speed(10).range(50..=32_000))
+                        .changed();
+                });
             });
         });
         changed
@@ -216,7 +219,17 @@ impl eframe::App for App {
                     );
                 }
 
+                let dpi_editable = SHARED.dpi_editable.load(Ordering::Relaxed);
                 ui.add_space(2.0);
+                if !dpi_editable {
+                    ui.label(
+                        egui::RichText::new(
+                            "as DPIs vêm dos perfis gravados no mouse; o painel só alterna",
+                        )
+                        .size(10.5)
+                        .color(muted.gamma_multiply(0.85)),
+                    );
+                }
                 if self.settings.split_axes {
                     changed |=
                         Self::dpi_row(ui, "DPI base — X", &mut self.settings.base_dpi, muted);

@@ -15,11 +15,32 @@ isso o painel tem um **seletor de marca**, e o motor muda com ela.
 
 | Marca | Método | Estado |
 |---|---|---|
-| **Logitech** | HID++ direto no mouse | funciona — **3,74 ms** por troca, medido |
+| **Logitech** | HID++ direto no mouse | funciona — **3,74 ms** por troca, medido em hardware |
+| **Genérico (SINOWEALTH)** | troca de perfil no mouse | implementado, **não verificado em hardware** |
 | **Sem marca** | driver RawAccel | **não utilizável**, ver abaixo |
 
 Se o motor da marca escolhida não encontrar o dispositivo, o painel diz isso e o ATIVAR
 fica desligado — em vez de fingir que está agindo.
+
+### Genérico (SINOWEALTH)
+
+SINOWEALTH é o fabricante do **chip**, não do mouse — por isso o mesmo protocolo aparece em
+dezenas de marcas e em mouses sem marca nenhuma. O identificador é o VID `258a`.
+
+A alternância se faz por **troca de perfil**, um comando de 6 bytes. O caminho óbvio — mudar
+o slot de DPI ativo — exigiria reescrever um relatório de **520 bytes** que vai para a
+memória persistente do mouse: fazer isso a cada tiro gastaria os ciclos de gravação do
+dispositivo. Por isso o motor **recusa** mouses que só exponham um perfil, dizendo o motivo,
+em vez de estragar o hardware para entregar a função.
+
+Como usar: configure dois perfis no mouse, o primeiro com a DPI de movimentação e o segundo
+com a de tiro. O painel só alterna entre eles — os valores vêm do próprio mouse, e os campos
+de DPI ficam somente-leitura.
+
+> ⚠ **Não passou por hardware.** O enquadramento do protocolo é testado byte a byte contra o
+> `driver-sinowealth.c` do libratbag, e as falhas são tratadas como recusa, nunca como
+> sucesso silencioso — mas nenhum mouse SINOWEALTH foi testado. Se o seu não funcionar, o
+> painel mostra o identificador (`258a:xxxx`) para você relatar.
 
 ### Por que "Sem marca" não funciona hoje
 
@@ -41,10 +62,14 @@ relata; não finge atender.
 
 1. Nova variante em `src/brand.rs`, com `label()` e `method()` — os testes cobram rótulo e
    método distintos, que é o erro de lista copiada.
-2. Um módulo com o protocolo dela, no formato de `src/mouse.rs`.
-3. Um braço em `Engine::for_brand`, em `src/engine.rs`.
+2. Um módulo de protocolo puro, testável sem hardware, no formato de `src/hidpp.rs` ou
+   `src/sinowealth.rs`.
+3. Um módulo de dispositivo que use `src/hid.rs` para achar a coleção.
+4. Um braço em `Engine::for_brand`, em `src/engine.rs`.
 
-Nada mais precisa mudar: o painel e a persistência já acompanham.
+Nada mais precisa mudar: o painel e a persistência já acompanham. E procure sempre o
+**comando de seleção** (perfil, slot, índice) — nunca o de escrita de configuração, que
+costuma gravar na memória persistente do mouse.
 
 ## Baixar
 

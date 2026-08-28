@@ -6,11 +6,14 @@ mod config;
 mod engine;
 mod fire_button;
 mod foreground;
+mod hid;
 mod hidpp;
 mod hook;
 mod mouse;
 mod rawaccel;
 mod shared;
+mod sinowealth;
+mod sinowealth_mouse;
 mod theme;
 
 fn main() -> eframe::Result<()> {
