@@ -19,14 +19,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
     UnhookWindowsHookEx, WH_MOUSE_LL, WM_APP, WM_HOTKEY,
 };
 
+use crate::engine::Engine;
 use crate::fire_button::Transition;
-use crate::mouse::Mouse;
 use crate::shared::SHARED;
 
 /// Instalar ou remover o hook. `wparam` carrega 1 ou 0.
 const WM_APP_SET_ENABLED: u32 = WM_APP + 1;
 /// Trocar a DPI. `wparam` carrega o valor.
 const WM_APP_SET_DPI: u32 = WM_APP + 2;
+/// Refazer o motor porque a marca mudou no painel.
+const WM_APP_SET_BRAND: u32 = WM_APP + 3;
 
 const HOTKEY_TOGGLE: i32 = 1;
 const VK_S: u32 = 0x53;
@@ -37,18 +39,8 @@ pub fn spawn() {
             .hook_thread
             .store(GetCurrentThreadId(), Ordering::SeqCst);
 
-        let mouse = Mouse::find();
-        match &mouse {
-            Some(m) => {
-                SHARED.mouse_found.store(true, Ordering::SeqCst);
-                SHARED.per_axis.store(m.per_axis, Ordering::SeqCst);
-                match m.current_dpi() {
-                    Some(dpi) => SHARED.report(format!("mouse encontrado · DPI atual {dpi}")),
-                    None => SHARED.report("mouse encontrado, mas não respondeu a leitura de DPI"),
-                }
-            }
-            None => SHARED.report("nenhum mouse Logitech com DPI programável encontrado"),
-        }
+        let mut engine = Engine::for_brand(SHARED.brand());
+        publish_engine(&engine);
 
         let _ = RegisterHotKey(None, HOTKEY_TOGGLE, MOD_CONTROL | MOD_ALT, VK_S);
 
@@ -58,13 +50,15 @@ pub fn spawn() {
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
             match msg.message {
                 WM_APP_SET_DPI => {
-                    if let Some(m) = &mouse {
-                        let dpi = msg.wParam.0 as u16;
-                        match m.set_dpi(dpi) {
-                            Ok(()) => SHARED.report(format!("DPI {dpi}")),
-                            Err(e) => SHARED.report(e),
-                        }
+                    let dpi = msg.wParam.0 as u16;
+                    match engine.set_dpi(dpi) {
+                        Ok(()) => SHARED.report(format!("DPI {dpi}")),
+                        Err(e) => SHARED.report(e),
                     }
+                }
+                WM_APP_SET_BRAND => {
+                    engine = Engine::for_brand(SHARED.brand());
+                    publish_engine(&engine);
                 }
                 WM_APP_SET_ENABLED => {
                     let want = msg.wParam.0 != 0;
@@ -107,6 +101,19 @@ unsafe fn apply(hook: &mut Option<HHOOK>, enabled: bool) {
             _ => {}
         }
     }
+}
+
+/// Leva ao painel o que o motor recém-montado sabe fazer.
+fn publish_engine(engine: &Engine) {
+    SHARED
+        .engine_usable
+        .store(engine.usable(), Ordering::SeqCst);
+    SHARED.per_axis.store(engine.per_axis(), Ordering::SeqCst);
+    SHARED.report(engine.describe());
+}
+
+pub fn request_brand_change() {
+    post(WM_APP_SET_BRAND, 0);
 }
 
 /// Desligar com o gatilho pressionado não pode deixar a DPI de tiro valendo no desktop.

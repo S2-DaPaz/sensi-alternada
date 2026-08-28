@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use eframe::egui;
 
+use crate::brand::Brand;
 use crate::config::Settings;
 use crate::fire_button::FireButton;
 use crate::hook;
@@ -16,8 +17,8 @@ const LIVE: egui::Color32 = egui::Color32::from_rgb(102, 214, 142);
 const WAITING: egui::Color32 = egui::Color32::from_rgb(214, 176, 102);
 const TROUBLE: egui::Color32 = egui::Color32::from_rgb(226, 118, 118);
 
-const HEIGHT_JOINED: f32 = 500.0;
-const HEIGHT_SPLIT: f32 = 576.0;
+const HEIGHT_JOINED: f32 = 556.0;
+const HEIGHT_SPLIT: f32 = 632.0;
 
 struct Palette {
     background: egui::Color32,
@@ -75,6 +76,10 @@ impl App {
             applied_colours: None,
         };
         app.publish();
+        // A thread do motor sobe antes do painel e monta o motor com a marca padrão.
+        // Sem este pedido, a marca salva em disco era ignorada até o usuário mexer no
+        // seletor — e o painel mostrava um motor que não era o escolhido.
+        hook::request_brand_change();
         SHARED.enabled.store(app.settings.enabled, Ordering::SeqCst);
         hook::request_enabled(app.settings.enabled);
         app
@@ -87,6 +92,7 @@ impl App {
             self.settings.shooting_dpi_x.clamp(50, 32_000) as u16,
         );
         SHARED.set_fire_button(self.settings.fire_button);
+        SHARED.set_brand(self.settings.brand);
         self.settings.save();
     }
 
@@ -237,6 +243,34 @@ impl eframe::App for App {
                 }
 
                 ui.add_space(4.0);
+                let mut brand_changed = false;
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Marca do mouse").color(muted));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::ComboBox::from_id_salt("brand")
+                            .selected_text(self.settings.brand.label())
+                            .width(110.0)
+                            .show_ui(ui, |ui| {
+                                for option in Brand::ALL {
+                                    brand_changed |= ui
+                                        .selectable_value(
+                                            &mut self.settings.brand,
+                                            option,
+                                            option.label(),
+                                        )
+                                        .changed();
+                                }
+                            });
+                    });
+                });
+                ui.label(
+                    egui::RichText::new(self.settings.brand.method())
+                        .size(10.5)
+                        .color(muted.gamma_multiply(0.85)),
+                );
+                changed |= brand_changed;
+
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("Botão de tiro").color(muted));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -293,7 +327,7 @@ impl eframe::App for App {
                 );
 
                 ui.add_space(12.0);
-                let mouse_ok = SHARED.mouse_found.load(Ordering::Relaxed);
+                let engine_ok = SHARED.engine_usable.load(Ordering::Relaxed);
                 let label = if live { "DESATIVAR" } else { "ATIVAR" };
                 let (fill, text) = if live {
                     (palette.surface_hover, palette.ink)
@@ -304,7 +338,7 @@ impl eframe::App for App {
                     egui::Button::new(egui::RichText::new(label).size(14.0).strong().color(text))
                         .fill(fill);
 
-                ui.add_enabled_ui(mouse_ok, |ui| {
+                ui.add_enabled_ui(engine_ok, |ui| {
                     if ui
                         .add_sized(egui::vec2(ui.available_width(), 40.0), button)
                         .clicked()
@@ -320,8 +354,8 @@ impl eframe::App for App {
                 ui.add_space(10.0);
                 let focused = SHARED.target_focused.load(Ordering::Relaxed);
                 let holding = SHARED.holding_fire.load(Ordering::Relaxed);
-                let (dot, status) = if !mouse_ok {
-                    (TROUBLE, "Nenhum mouse com DPI programável".to_string())
+                let (dot, status) = if !engine_ok {
+                    (TROUBLE, "Sem motor de DPI para esta marca".to_string())
                 } else if !live {
                     (muted, "Desligado".to_string())
                 } else if !focused {
@@ -356,6 +390,10 @@ impl eframe::App for App {
 
                 if changed {
                     self.publish();
+                }
+                if brand_changed {
+                    // O motor e outro: refazer na thread que fala com o dispositivo.
+                    hook::request_brand_change();
                 }
             });
     }

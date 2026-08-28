@@ -13,6 +13,8 @@ são macro, observáveis dentro do jogo, e são banimento.
 
 | Quero mudar | Arquivo |
 |---|---|
+| a lista de marcas e seus rótulos | `src/brand.rs` — **tem testes** |
+| qual motor atende qual marca | `src/engine.rs` |
 | enquadramento das mensagens HID++ | `src/hidpp.rs` — **tem testes** |
 | abrir o mouse, ler e escrever | `src/mouse.rs` |
 | qual botão dispara, e como o evento é lido | `src/fire_button.rs` — **tem testes** |
@@ -21,8 +23,13 @@ são macro, observáveis dentro do jogo, e são banimento.
 | quando a troca vale | `src/hook.rs`, `src/foreground.rs` (`DEFAULT_TARGET_EXE`) |
 | o painel | `src/app.rs` |
 
-`hidpp.rs`, `fire_button.rs`, `config.rs` e `theme.rs` são lógica pura e rodam sem hardware.
-**Mudança neles entra por teste primeiro.**
+`hidpp.rs`, `brand.rs`, `fire_button.rs`, `config.rs` e `theme.rs` são lógica pura e rodam
+sem hardware. **Mudança neles entra por teste primeiro.**
+
+## Acrescentar uma marca
+
+Variante em `brand.rs` (com `label()` e `method()`), módulo com o protocolo no formato de
+`mouse.rs`, e um braço em `Engine::for_brand`. O painel e a persistência já acompanham.
 
 ## O que já custou caro aqui
 
@@ -37,8 +44,14 @@ são macro, observáveis dentro do jogo, e são banimento.
   cada clique. Ela é postada para o laço de mensagens.
 - **`clear_color` do eframe ignora `panel_fill`**, e **`override_text_color` não alcança
   `strong()`**. As duas cores precisam ser forçadas à mão.
-- **Campo novo em `Settings` precisa de `#[serde(default = "...")]` nomeado.** O default
-  simples devolve zero, e zero numa cor é preto no preto.
+- **Campo novo em `Settings` precisa de `#[serde(default)]`.** Sem ele a desserialização
+  inteira falha e o `unwrap_or_default()` apaga **toda** a configuração de quem já usava o
+  programa — medido: acrescentar `brand` sem default quebrou dois testes de migração de uma
+  vez. Para cor, o default precisa ser **nomeado**: o simples devolve zero, e zero numa cor
+  é preto no preto.
+- **A thread do motor sobe antes do painel.** Ela monta o motor com a marca padrão, então
+  `App::new` precisa chamar `hook::request_brand_change()` — senão a marca salva em disco é
+  ignorada e o painel mostra um motor que não é o escolhido.
 
 ## Como diagnosticar
 
@@ -50,6 +63,6 @@ A verdade sobre a DPI é **lida do mouse**, não do que o app diz ter feito.
 
 ## QA
 
-`cargo test` (12 testes) e `cargo fmt`. O painel se verifica rodando e capturando a janela
+`cargo test` (15 testes) e `cargo fmt`. O painel se verifica rodando e capturando a janela
 com `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` e o retângulo de
 `DwmGetWindowAttribute(9)` — `CopyFromScreen` fotografa o que está por cima.

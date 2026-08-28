@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod brand;
 mod config;
+mod engine;
 mod fire_button;
 mod foreground;
 mod hidpp;
 mod hook;
 mod mouse;
+mod rawaccel;
 mod shared;
 mod theme;
 
@@ -16,7 +19,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([340.0, 500.0])
+            .with_inner_size([340.0, 556.0])
             .with_resizable(false)
             .with_title("Sensibilidade alternada"),
         ..Default::default()

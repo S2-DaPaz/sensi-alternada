@@ -8,13 +8,43 @@ aberto.
 
 ![painel](docs/painel.png)
 
-## Requisito: mouse Logitech com DPI programável
+## Marca do mouse
 
-O painel fala **HID++**, o protocolo que o próprio G HUB usa para conversar com o mouse.
-Isso significa Logitech. Razer, Corsair e outros têm protocolo próprio, ainda não
-implementado aqui, e mouse sem DPI programável não tem caminho por software nenhum.
+Não existe comando padronizado para trocar DPI: cada fabricante tem o seu protocolo. Por
+isso o painel tem um **seletor de marca**, e o motor muda com ela.
 
-Se o seu mouse não for encontrado, o painel diz isso e o botão ATIVAR fica desligado.
+| Marca | Método | Estado |
+|---|---|---|
+| **Logitech** | HID++ direto no mouse | funciona — **3,74 ms** por troca, medido |
+| **Sem marca** | driver RawAccel | **não utilizável**, ver abaixo |
+
+Se o motor da marca escolhida não encontrar o dispositivo, o painel diz isso e o ATIVAR
+fica desligado — em vez de fingir que está agindo.
+
+### Por que "Sem marca" não funciona hoje
+
+O RawAccel é o candidato natural para o caminho genérico: é um driver de filtro, transforma
+as contagens do mouse antes do sistema vê-las, e por isso serviria a qualquer marca.
+
+Mas ele tem um limite que vem do próprio fonte. `common/rawaccel-io-def.h` define **três**
+IOCTLs — `READ`, `WRITE`, `GET_VERSION` — e nenhum liga-desliga rápido. E em
+`driver/driver.cpp`, o `case ra::WRITE` chama `WriteDelay()` **antes de ler o buffer**, com
+`WRITE_DELAY = 1000` ms. Um segundo por escrita, no kernel, incondicional. A FAQ oficial
+confirma o porquê: *"it is fully signed and has a one-second delay on write, so it cannot be
+used to cheat"*.
+
+Na prática: segurar o gatilho mudaria a sensibilidade **um segundo depois**, e soltá-lo a
+devolveria outro segundo depois. Chega quando a rajada já acabou. O motor detecta o driver e
+relata; não finge atender.
+
+### Acrescentar uma marca
+
+1. Nova variante em `src/brand.rs`, com `label()` e `method()` — os testes cobram rótulo e
+   método distintos, que é o erro de lista copiada.
+2. Um módulo com o protocolo dela, no formato de `src/mouse.rs`.
+3. Um braço em `Engine::for_brand`, em `src/engine.rs`.
+
+Nada mais precisa mudar: o painel e a persistência já acompanham.
 
 ## Baixar
 

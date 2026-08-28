@@ -41,11 +41,11 @@ pub fn spawn_watcher() {
             SHARED.target_focused.store(focused, Ordering::Relaxed);
             if std::env::var("SENSI_DEBUG").is_ok() {
                 let linha = format!(
-                    "alvo={target:?} vendo={visto:?} foco={} ligado={} mouse={} porEixo={} segurando={} dpi={}->{} · {}
+                    "alvo={target:?} vendo={visto:?} foco={} ligado={} motor={} porEixo={} segurando={} dpi={}->{} · {}
 ",
                     focused,
                     SHARED.enabled.load(Ordering::Relaxed),
-                    SHARED.mouse_found.load(Ordering::Relaxed),
+                    SHARED.engine_usable.load(Ordering::Relaxed),
                     SHARED.per_axis.load(Ordering::Relaxed),
                     SHARED.holding_fire.load(Ordering::Relaxed),
                     SHARED.dpi_base(),

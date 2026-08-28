@@ -1,5 +1,6 @@
 //! Panel settings, persisted as JSON next to the user's profile.
 
+use crate::brand::Brand;
 use crate::fire_button::FireButton;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +16,10 @@ pub struct Settings {
     pub split_axes: bool,
     pub fire_button: FireButton,
     pub enabled: bool,
+    /// Campo novo precisa de default: sem ele a desserializacao inteira falha e o
+    /// `unwrap_or_default()` apaga toda a configuracao de quem ja usava o programa.
+    #[serde(default)]
+    pub brand: Brand,
     /// A file written before the colours existed must not deserialise them to black.
     #[serde(default = "default_accent")]
     pub accent: [u8; 3],
@@ -40,6 +45,7 @@ impl Default for Settings {
             split_axes: false,
             fire_button: FireButton::Left,
             enabled: false,
+            brand: Brand::default(),
             accent: default_accent(),
             background: default_background(),
         }
@@ -124,6 +130,29 @@ mod tests {
         assert_eq!(loaded.background, default_background(), "preto no preto");
     }
 
+    /// A armadilha que o campo de cor ja pregou: campo novo sem default nomeado faz a
+    /// desserializacao inteira falhar, e o `unwrap_or_default()` joga fora TODA a
+    /// configuracao de quem ja usava o programa.
+    #[test]
+    fn a_file_written_before_the_brand_existed_keeps_everything_else() {
+        let old = r#"{
+            "base_dpi": 1600,
+            "base_dpi_y": 1600,
+            "shooting_dpi_x": 500,
+            "shooting_dpi_y": 500,
+            "split_axes": false,
+            "fire_button": "Right",
+            "enabled": true,
+            "accent": [10, 20, 30],
+            "background": [40, 50, 60]
+        }"#;
+        let loaded = Settings::from_json_str(old);
+        assert_eq!(loaded.base_dpi, 1600, "a configuracao inteira foi perdida");
+        assert_eq!(loaded.fire_button, FireButton::Right);
+        assert_eq!(loaded.accent, [10, 20, 30]);
+        assert_eq!(loaded.brand, Brand::Logitech, "marca ausente vira o padrao");
+    }
+
     #[test]
     fn settings_survive_a_round_trip() {
         let saved = Settings {
@@ -134,6 +163,7 @@ mod tests {
             split_axes: true,
             fire_button: FireButton::Side2,
             enabled: true,
+            brand: Brand::SemMarca,
             accent: [200, 40, 90],
             background: [250, 248, 245],
         };
