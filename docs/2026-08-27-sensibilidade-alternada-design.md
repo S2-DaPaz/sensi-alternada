@@ -38,17 +38,30 @@ user-mode.
 
 ## Mecânica
 
-Hook `WH_MOUSE_LL` numa thread dedicada com laço de mensagens.
+Duas APIs, papéis separados, numa thread dedicada com laço de mensagens.
 
-Para cada `WM_MOUSEMOVE`:
+**O hook `WH_MOUSE_LL` só suprime.** Ele rastreia o gatilho e, enquanto a escala está
+ativa, devolve 1 para engolir o movimento físico. Não lê `pt` para nada.
 
-1. `dwExtraInfo == MARCA` → é injeção nossa. Repassa e atualiza `last_pos`.
-2. Desligado, ou BlueStacks fora de foco, ou botão de tiro solto → repassa e atualiza
-   `last_pos`.
-3. Caso contrário → **suprime** (retorna 1), escala e reinjeta.
+> **Corrigido em 27/08.** A primeira versão derivava o delta de `pt - last_pos`. Medido com
+> 400 px injetados, o hook reportou **700**, depois **100**, depois **−150** — a posição de
+> cursor chega acelerada pelo Windows e disputada pelas próprias reinjeções assíncronas. O
+> ponteiro ficava errático e o fator não significava nada.
 
-O delta físico é `pt - last_pos`, onde `last_pos` é onde o cursor realmente está —
-atualizado por nós a cada injeção. A reinjeção é **absoluta**
+**O raw input mede.** `WM_INPUT` entrega `lLastX`/`lLastY`, a contagem crua do dispositivo,
+sem aceleração e sem clamp de borda. Pacotes com `MOUSE_MOVE_ABSOLUTE` são descartados: são
+as nossas próprias injeções voltando — é o mesmo filtro que o driver do RawAccel aplica.
+
+> **Armadilha que custou o diagnóstico.** `RegisterRawInputDevices` inscreve o **processo**,
+> não a janela, por par usage page/usage. O `winit`, sob o eframe, se inscreve para a janela
+> dele durante o arranque e substitui a nossa — **as duas chamadas devolvem sucesso**. O
+> `WM_INPUT` parava de chegar sem erro nenhum, e o programa engolia o movimento sem repor:
+> o ponteiro travava. `reregister_raw_input()` roda a cada 200 ms e no início de cada
+> rajada.
+
+A posição alvo vive num `f64` que só nós alteramos, semeado do cursor real quando o gatilho
+é pressionado e **nunca comparado com ele** depois — é isso que elimina a disputa. A
+reinjeção é **absoluta**
 (`MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK`), que ignora a
 velocidade de ponteiro e a aceleração do Windows: sem isso o fator seria aplicado duas
 vezes, uma pela gente e outra pelo SO.
@@ -60,13 +73,18 @@ O estado do botão de tiro é rastreado **dentro do hook** (`WM_LBUTTONDOWN`/`UP
 `WM_RBUTTONDOWN/UP`, `WM_MBUTTONDOWN/UP`, `WM_XBUTTONDOWN/UP` com `mouseData`), e não
 por `GetAsyncKeyState` — é exato e não sofre com troca de botões primário/secundário.
 
-### Acumulador de resto
+### Onde a fração mora
 
 `dx`/`dy` são inteiros. Multiplicar por 0,5 e truncar transforma uma sequência de +1 em
 uma sequência de zeros: **a mira trava no movimento lento**, que é exatamente onde a
-precisão importa. O resto fracionário é acumulado entre eventos, por eixo, e some ao
-próximo. O acumulador **zera** ao soltar o gatilho, para o primeiro evento do próximo
-tiro não carregar sobra velha.
+precisão importa. A fração vive na posição em `f64`; semear no início da rajada a descarta,
+para o primeiro evento do próximo tiro não carregar sobra velha.
+
+### Medição
+
+Com 100 passos de 4 px e 200 passos de 1 px, fator 0,5, no binário de release:
+**erro 0 px** nas quatro medições de duas rodadas, com supressões, injeções e eventos
+absolutos filtrados batendo exatamente (600 = 600 = 600).
 
 ### Foco
 
@@ -121,10 +139,10 @@ latência medida foi 0,023 ms de p95 no hook, contra um orçamento de 8 ms.
 
 | Arquivo | Papel | Testável sem Windows |
 |---|---|---|
-| `scaling.rs` | fator por DPI + acumulador de resto | **sim** — é onde mora o TDD |
+| `scaling.rs` | fator por DPI, posição virtual, coordenada absoluta | **sim** — é onde mora o TDD |
 | `theme.rs` | contraste: que cor de texto sobrevive a um fundo | sim |
 | `config.rs` | serialização, migração de campo novo, caminho do JSON | sim |
-| `hook.rs` | hook de baixo nível, supressão, reinjeção | não |
+| `hook.rs` | supressão, raw input, reinscrição, reinjeção | não |
 | `foreground.rs` | executável em foco, em cache | não |
 | `app.rs` | painel `egui` | não |
 
@@ -134,8 +152,10 @@ Compensação de recuo e autofire. Ajustar sensibilidade não automatiza ação 
 keymapping em emulador oficial é permitido pela Garena com cliente não modificado; recuo
 automático e autofire são macro, são observáveis dentro do jogo, e são banimento.
 
-## Limitação conhecida do v1
+## Limitação conhecida
 
-Se o BlueStacks prender o cursor na borda da janela em vez de recentralizar, movimento
-longo pode perder curso. A correção é ler o delta cru do raw input em vez da posição do
-cursor — desenho de duas APIs já validado em 26/08, evolução conhecida.
+O clamp de borda deixou de existir com o raw input, que não é preso à tela. O que resta é a
+disputa pela inscrição do raw input: se algum dia o `winit` reinscrever entre dois ciclos de
+200 ms, uma rajada pode começar sem medição. A reinscrição no `WM_XBUTTONDOWN`/`WM_LBUTTONDOWN`
+fecha essa janela para o caso normal; o sintoma, se acontecer, é o ponteiro **parar** durante
+o tiro — nunca ficar impreciso.

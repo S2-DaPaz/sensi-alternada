@@ -36,12 +36,26 @@ apareceram assim: `inf` que arremessa o cursor, fator `0,0` que congela a mira, 
 - **Campo novo em `Settings` precisa de `#[serde(default = "...")]` nomeado.** O
   `#[serde(default)]` simples devolve zero, e zero numa cor é **preto no preto**.
 
-## Duas coisas que parecem detalhe e não são
+## Quatro coisas que parecem detalhe e não são
 
-- A injeção é **absoluta**. Trocar por relativa faz o Windows aplicar a velocidade de
-  ponteiro por cima do nosso fator, e o número do painel deixa de significar o que diz.
-- A marca em `dwExtraInfo` (`TAG`) é o que impede o hook de reprocessar a própria injeção.
-  Sem ela o cursor foge sozinho.
+- **O delta vem do raw input, nunca do hook.** `MSLLHOOKSTRUCT::pt` é posição de cursor:
+  chega acelerada e disputada pelas reinjeções. Medido — 400 px injetados viraram 700, 100
+  e **−150** em três rodadas. O hook só suprime.
+- **A inscrição no raw input é por processo**, e o winit sob o eframe rouba a nossa durante
+  o arranque, sem erro nenhum. Por isso `reregister_raw_input()` roda a cada 200 ms e no
+  início de cada rajada. Se `WM_INPUT` parar de chegar, é aqui.
+- A injeção é **absoluta**, escalada por `tamanho − 1`. Relativa faz o Windows aplicar a
+  velocidade de ponteiro por cima do fator; dividir por `tamanho` encolhe cada injeção e a
+  perda vira deriva.
+- A marca em `dwExtraInfo` (`TAG`) impede o hook de reprocessar a própria injeção, e o
+  filtro `MOUSE_MOVE_ABSOLUTE` faz o mesmo do lado do raw input.
+
+## Como medir de novo
+
+`SENSI_DEBUG=1` escreve contadores em `%TEMP%\sensi-debug.txt`. O par que diagnostica é
+**suprimidos** contra **raw_seen**: suprimir sem receber significa que a inscrição foi
+roubada, e o ponteiro simplesmente para. Contador de diagnóstico vai **antes** da guarda de
+filtragem — depois dela, "não chega" e "chega e é descartado" ficam indistinguíveis.
 
 ## Se o comportamento em jogo estiver errado
 

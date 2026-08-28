@@ -16,17 +16,48 @@ use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThre
 use crate::shared::SHARED;
 
 /// BlueStacks 5 / MSI player.
-pub const TARGET_EXE: &str = "hd-player.exe";
+pub const DEFAULT_TARGET_EXE: &str = "hd-player.exe";
+
+/// Override for another emulator — LDPlayer, GameLoop. `*` means every window, which is
+/// also how the pointer precision is measured without depending on what has focus.
+fn target_exe() -> String {
+    std::env::var("SENSI_TARGET_EXE").unwrap_or_else(|_| DEFAULT_TARGET_EXE.to_string())
+}
 
 const SAMPLE_INTERVAL: Duration = Duration::from_millis(200);
 
 pub fn spawn_watcher() {
-    std::thread::spawn(|| {
+    let target = target_exe();
+    std::thread::spawn(move || {
         loop {
-            let focused = foreground_exe()
-                .map(|name| name.eq_ignore_ascii_case(TARGET_EXE))
-                .unwrap_or(false);
+            let visto = foreground_exe();
+            // `*` vale em qualquer janela: util para emulador de nome desconhecido, e e
+            // como a precisao do ponteiro e medida sem depender de quem esta em foco.
+            let focused = target == "*"
+                || visto
+                    .as_deref()
+                    .map(|name| name.eq_ignore_ascii_case(&target))
+                    .unwrap_or(false);
             SHARED.target_focused.store(focused, Ordering::Relaxed);
+            crate::hook::reregister_raw_input();
+            if std::env::var("SENSI_DEBUG").is_ok() {
+                let linha = format!(
+                    "alvo={target:?} vendo={visto:?} foco={} ligado={} hook={} janela={} rawreg={} rereg={} segurando={} raw_seen={} raw_abs={} injetados={} suprimidos={}
+",
+                    focused,
+                    SHARED.enabled.load(Ordering::Relaxed),
+                    SHARED.hook_installed.load(Ordering::Relaxed),
+                    SHARED.sink_ok.load(Ordering::Relaxed),
+                    SHARED.raw_registered.load(Ordering::Relaxed),
+                    SHARED.reregistros.load(Ordering::Relaxed),
+                    SHARED.holding_fire.load(Ordering::Relaxed),
+                    SHARED.raw_seen.load(Ordering::Relaxed),
+                    SHARED.raw_abs.load(Ordering::Relaxed),
+                    SHARED.injected.load(Ordering::Relaxed),
+                    SHARED.suppressed.load(Ordering::Relaxed),
+                );
+                let _ = std::fs::write(std::env::temp_dir().join("sensi-debug.txt"), linha);
+            }
             std::thread::sleep(SAMPLE_INTERVAL);
         }
     });

@@ -44,6 +44,11 @@ para fazer com qualquer marca. Ele intercepta o movimento com um hook
 `WH_MOUSE_LL`, **engole** o evento físico e reinjeta a versão multiplicada pelo fator
 `DPI atirando ÷ DPI base`.
 
+O movimento é medido pelo **raw input**, que entrega a contagem crua do dispositivo. O hook
+serve só para engolir o movimento físico. Medir pela posição de cursor que o hook entrega
+não funciona: ela chega acelerada pelo Windows e disputada pelas próprias reinjeções — para
+400 px injetados ela reportou 700, depois 100, depois **−150**.
+
 Dois detalhes carregam o peso:
 
 - A reinjeção é **absoluta**, o que ignora a velocidade de ponteiro e a "melhor precisão
@@ -57,6 +62,13 @@ Dois detalhes carregam o peso:
 A cor do texto **dentro** do botão não é a que você escolhe: ela é derivada do brilho da
 cor escolhida, com os pesos do sRGB. Sem isso um botão amarelo receberia letra branca e
 ninguém leria o que está escrito.
+
+## Variáveis de ambiente
+
+| Variável | Para quê |
+|---|---|
+| `SENSI_TARGET_EXE` | Outro emulador — `LDPlayer.exe`, `AndroidEmulator.exe`. `*` vale em qualquer janela. |
+| `SENSI_DEBUG=1` | Escreve contadores em `%TEMP%\sensi-debug.txt`: foco, hook, inscrição no raw input, eventos vistos, suprimidos e injetados. |
 
 ## Se a mira ficar dobrada ou trêmula
 

@@ -17,6 +17,17 @@ pub struct Shared {
     fire_button: AtomicU8,
     /// Thread id of the message loop that owns the hook, published once it starts.
     pub hook_thread: AtomicU32,
+    /// Contadores de diagnostico, dumpados quando SENSI_DEBUG=1.
+    pub raw_seen: AtomicU32,
+    pub raw_abs: AtomicU32,
+    pub injected: AtomicU32,
+    pub suppressed: AtomicU32,
+    pub hook_installed: AtomicBool,
+    pub sink_ok: AtomicBool,
+    pub raw_registered: AtomicBool,
+    /// HWND da janela so-de-mensagem, para reinscricao.
+    pub sink_hwnd: std::sync::atomic::AtomicUsize,
+    pub reregistros: AtomicU32,
 }
 
 pub static SHARED: Shared = Shared {
@@ -27,6 +38,15 @@ pub static SHARED: Shared = Shared {
     factor_y_ppm: AtomicU32::new(1_000_000),
     fire_button: AtomicU8::new(0),
     hook_thread: AtomicU32::new(0),
+    raw_seen: AtomicU32::new(0),
+    raw_abs: AtomicU32::new(0),
+    injected: AtomicU32::new(0),
+    suppressed: AtomicU32::new(0),
+    hook_installed: AtomicBool::new(false),
+    sink_ok: AtomicBool::new(false),
+    raw_registered: AtomicBool::new(false),
+    sink_hwnd: std::sync::atomic::AtomicUsize::new(0),
+    reregistros: AtomicU32::new(0),
 };
 
 impl Shared {

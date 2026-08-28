@@ -1,6 +1,6 @@
 [package]
 name = "sensi-alternada"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -8,4 +8,4 @@ dirs = "6.0.0"
 eframe = "0.36.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_Input"] }
