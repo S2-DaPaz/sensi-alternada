@@ -6,9 +6,16 @@ firmware nem do software do fabricante.
 
 ![painel](docs/painel.png)
 
+## Baixar
+
+[**Última versão**](https://github.com/S2-DaPaz/sensi-alternada/releases/latest) — um `.exe`,
+sem instalador, Windows 10/11 x64. O binário não é assinado, então o SmartScreen avisa no
+primeiro arranque: **Mais informações → Executar assim mesmo**. Quem preferir compila do
+fonte e compara o hash publicado na release.
+
 ## Como usar
 
-1. `cargo build --release` e rode `target/release/sensi-alternada.exe`.
+1. Rode o `.exe` baixado, ou compile com `cargo build --release`.
 2. **DPI base** — a DPI que o seu mouse está usando hoje.
 3. **DPI atirando** — a DPI que você quer enquanto segura o gatilho. Menor = mais
    precisão.
